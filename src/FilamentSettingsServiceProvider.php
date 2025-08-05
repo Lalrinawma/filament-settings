@@ -13,7 +13,6 @@ class FilamentSettingsServiceProvider extends PackageServiceProvider
         $package
             ->name('filament-settings')
             ->hasTranslations()
-            ->hasViews()
             ->hasInstallCommand(function (InstallCommand $command) {
                 $composerFile = file_get_contents(__DIR__ . '/../composer.json');
 
