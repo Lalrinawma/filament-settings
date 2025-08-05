@@ -5,29 +5,35 @@ namespace Outerweb\FilamentSettings\Filament\Pages;
 use Closure;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Field;
-use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Concerns\HasUnsavedDataChangesAlert;
-use Filament\Pages\Concerns\InteractsWithFormActions;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Actions;
+use Filament\Schemas\Components\Component;
+use Filament\Schemas\Components\EmbeddedSchema;
+use Filament\Schemas\Components\Form;
+use Filament\Schemas\Components\Group;
+use Filament\Schemas\Schema;
 use Filament\Support\Exceptions\Halt;
 use Filament\Support\Facades\FilamentView;
+use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Str;
+use Illuminate\Support\Arr;
 use Outerweb\Settings\Models\Setting;
+use UnitEnum;
 
 /**
- * @property Form $form
+ * @property Schema $form
  */
 class Settings extends Page
 {
     use HasUnsavedDataChangesAlert;
-    use InteractsWithFormActions;
 
     public ?array $data = [];
 
-    protected static ?string $navigationIcon = 'heroicon-o-cog';
+    protected static string | UnitEnum | null $navigationGroup = Heroicon::Cog6Tooth;
 
-    protected static string $view = 'filament-settings::filament/pages/settings';
+//    protected static string $view = 'filament-settings::filament/pages/settings';
 
     public static function getNavigationLabel() : string
     {
@@ -44,27 +50,6 @@ class Settings extends Page
         return __('filament-settings::translations.page.title');
     }
 
-    public function schema() : array|Closure
-    {
-        return [];
-    }
-
-    public function form(Form $form) : Form
-    {
-        return $form
-            ->schema($this->schema())
-            ->statePath('data');
-    }
-
-    public function getFormActions() : array
-    {
-        return [
-            Action::make('save')
-                ->label(__('filament-settings::translations.form.actions.save'))
-                ->submit('data')
-                ->keyBindings(['mod+s'])
-        ];
-    }
 
     public function mount() : void
     {
@@ -84,27 +69,22 @@ class Settings extends Page
 
     public function save() : void
     {
+        if (! $this->canEdit()) {
+            return;
+        }
+
         try {
             $this->callHook('beforeValidate');
 
-            $fields = collect($this->form->getFlatFields(true));
-            $fieldsWithNestedFields = $fields->filter(fn (Field $field) => count($field->getChildComponents()) > 0);
-
-            $fieldsWithNestedFields->each(function (Field $fieldWithNestedFields, string $fieldWithNestedFieldsKey) use (&$fields) {
-                $fields = $fields->reject(function (Field $field, string $fieldKey) use ($fieldWithNestedFields, $fieldWithNestedFieldsKey) {
-                    return Str::startsWith($fieldKey, $fieldWithNestedFieldsKey . '.');
-                });
-            });
-
-            $data = $fields->mapWithKeys(function (Field $field, string $fieldKey) {
-                return [$fieldKey => data_get($this->form->getState(), $fieldKey)];
-            })->toArray();
+            $data = $this->form->getState();
 
             $this->callHook('afterValidate');
 
             $this->callHook('beforeSave');
+            
+            $new_data = Arr::dot($data);
 
-            foreach ($data as $key => $value) {
+            foreach ($new_data as $key => $value) {
                 Setting::set($key, $value);
             }
 
@@ -138,8 +118,114 @@ class Settings extends Page
         return __('filament-settings::translations.notifications.saved');
     }
 
+
+    /**
+     * @return array<Action | ActionGroup>
+     */
+    public function getFormActions(): array
+    {
+        return [
+            $this->getSaveFormAction(),
+        ];
+    }
+
+    public function getSaveFormAction(): Action
+    {
+        $hasFormWrapper = $this->hasFormWrapper();
+
+        return Action::make('save')
+            ->label(__('filament-settings::translations.form.actions.save'))
+            ->submit($hasFormWrapper ? $this->getSubmitFormLivewireMethodName() : null)
+            ->action($hasFormWrapper ? null : $this->getSubmitFormLivewireMethodName())
+            ->keyBindings(['mod+s'])
+            ->visible($this->canEdit());
+    }
+
+    public function getSubmitFormAction(): Action
+    {
+        return $this->getSaveFormAction();
+    }
+
+//    public function defaultForm(Schema $schema): Schema
+//    {
+//        return $schema
+//            ->columns(2)
+//            ->disabled(! $this->canEdit())
+//            ->inlineLabel($this->hasInlineLabels())
+//            ->statePath('data');
+//    }
+
+    public function schema() : array|Closure
+    {
+        return [];
+    }
+
+    public function form(Schema $schema): Schema
+    {
+        return $schema
+            ->schema($this->schema())
+            ->statePath('data');
+    }
+
+    public function content(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                $this->getFormContentComponent(),
+            ]);
+    }
+
+    public function getFormContentComponent(): Component
+    {
+        if (! $this->hasFormWrapper()) {
+            return Group::make([
+                EmbeddedSchema::make('form'),
+                $this->getFormActionsContentComponent(),
+            ]);
+        }
+
+        return Form::make([EmbeddedSchema::make('form')])
+            ->id('form')
+            ->livewireSubmitHandler($this->getSubmitFormLivewireMethodName())
+            ->footer([
+                $this->getFormActionsContentComponent(),
+            ]);
+    }
+
+    public function getFormActionsContentComponent(): Component
+    {
+        return Actions::make($this->getFormActions())
+            ->alignment($this->getFormActionsAlignment())
+            ->fullWidth($this->hasFullWidthFormActions())
+            ->sticky($this->areFormActionsSticky());
+    }
+
+    protected function getSubmitFormLivewireMethodName(): string
+    {
+        return 'save';
+    }
+
+    public function hasFormWrapper(): bool
+    {
+        return true;
+    }
+
+    protected function hasFullWidthFormActions(): bool
+    {
+        return false;
+    }
     protected function getRedirectUrl() : ?string
     {
         return null;
+    }
+
+    public function canEdit(): bool
+    {
+        return true;
+    }
+
+    public function getDefaultTestingSchemaName(): ?string
+    {
+        return 'form';
     }
 }
