@@ -10,7 +10,7 @@ This package adds a way to interact with outerweb/settings in Filament.
 You can install the package via composer:
 
 ```bash
-composer require imnpc/filament-settings
+composer require lalrinawma/filament-settings
 ```
 
 Configure the Outerweb/Settings package as described in the [Settings documentation](https://github.com/outer-web/settings).
