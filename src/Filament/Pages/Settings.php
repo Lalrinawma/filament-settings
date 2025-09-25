@@ -2,6 +2,7 @@
 
 namespace Outerweb\FilamentSettings\Filament\Pages;
 
+use BackedEnum;
 use Closure;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Field;
@@ -18,9 +19,7 @@ use Filament\Support\Exceptions\Halt;
 use Filament\Support\Facades\FilamentView;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Str;
-use Illuminate\Support\Arr;
 use Outerweb\Settings\Models\Setting;
-use UnitEnum;
 
 /**
  * @property Schema $form
@@ -31,32 +30,31 @@ class Settings extends Page
 
     public ?array $data = [];
 
-    protected static string | UnitEnum | null $navigationGroup = Heroicon::Cog6Tooth;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::Cog6Tooth;
 
-//    protected static string $view = 'filament-settings::filament/pages/settings';
+    //    protected static string $view = 'filament-settings::filament/pages/settings';
 
-    public static function getNavigationLabel() : string
+    public static function getNavigationLabel(): string
     {
         return __('filament-settings::translations.page.navigation_label');
     }
 
-    public function getLayout() : string
+    public function getLayout(): string
     {
         return static::$layout ?? 'filament-panels::components.layout.index';
     }
 
-    public function getTitle() : string
+    public function getTitle(): string
     {
         return __('filament-settings::translations.page.title');
     }
 
-
-    public function mount() : void
+    public function mount(): void
     {
         $this->fillForm();
     }
 
-    protected function fillForm() : void
+    protected function fillForm(): void
     {
         $data = Setting::get();
 
@@ -67,24 +65,32 @@ class Settings extends Page
         $this->callHook('afterFill');
     }
 
-    public function save() : void
+    public function save(): void
     {
         if (! $this->canEdit()) {
             return;
         }
-
         try {
             $this->callHook('beforeValidate');
 
-            $data = $this->form->getState();
+            $fields = collect($this->form->getFlatFields(true));
+            $fieldsWithNestedFields = $fields->filter(fn (Field $field) => count($field->getChildComponents()) > 0);
+
+            $fieldsWithNestedFields->each(function (Field $fieldWithNestedFields, string $fieldWithNestedFieldsKey) use (&$fields) {
+                $fields = $fields->reject(function (Field $field, string $fieldKey) use ($fieldWithNestedFieldsKey) {
+                    return Str::startsWith($fieldKey, $fieldWithNestedFieldsKey.'.');
+                });
+            });
+
+            $data = $fields->mapWithKeys(function (Field $field, string $fieldKey) {
+                return [$fieldKey => data_get($this->form->getState(), $fieldKey)];
+            })->toArray();
 
             $this->callHook('afterValidate');
 
             $this->callHook('beforeSave');
-            
-            $new_data = Arr::dot($data);
-
-            foreach ($new_data as $key => $value) {
+            info($data);
+            foreach ($data as $key => $value) {
                 Setting::set($key, $value);
             }
 
@@ -100,7 +106,7 @@ class Settings extends Page
         }
     }
 
-    protected function getSavedNotification() : ?Notification
+    protected function getSavedNotification(): ?Notification
     {
         $title = $this->getSavedNotificationTitle();
 
@@ -113,11 +119,10 @@ class Settings extends Page
             ->title($this->getSavedNotificationTitle());
     }
 
-    protected function getSavedNotificationTitle() : ?string
+    protected function getSavedNotificationTitle(): ?string
     {
         return __('filament-settings::translations.notifications.saved');
     }
-
 
     /**
      * @return array<Action | ActionGroup>
@@ -146,16 +151,16 @@ class Settings extends Page
         return $this->getSaveFormAction();
     }
 
-//    public function defaultForm(Schema $schema): Schema
-//    {
-//        return $schema
-//            ->columns(2)
-//            ->disabled(! $this->canEdit())
-//            ->inlineLabel($this->hasInlineLabels())
-//            ->statePath('data');
-//    }
+    //    public function defaultForm(Schema $schema): Schema
+    //    {
+    //        return $schema
+    //            ->columns(2)
+    //            ->disabled(! $this->canEdit())
+    //            ->inlineLabel($this->hasInlineLabels())
+    //            ->statePath('data');
+    //    }
 
-    public function schema() : array|Closure
+    public function schema(): array|Closure
     {
         return [];
     }
@@ -214,7 +219,8 @@ class Settings extends Page
     {
         return false;
     }
-    protected function getRedirectUrl() : ?string
+
+    protected function getRedirectUrl(): ?string
     {
         return null;
     }
